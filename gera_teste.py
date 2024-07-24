@@ -19,3 +19,4 @@ def imprimir_linhas(l, n, linhas):
 
 if __name__ == "__main__":
     l, n, linhas = gerar_linhas()
+    imprimir_linhas(l, n, linhas)

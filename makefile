@@ -15,7 +15,7 @@ main.o: main.c
 	$(CC) $(CFLAGS) -c main.c
 
 clean:
-	rm -f *.o $(TARGET)
+	rm -f *.o $(TARGET) *.txt
 
 teste: $(TARGET) $(TESTE) 
 	./$(TARGET) < $(TESTE)
