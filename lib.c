@@ -42,6 +42,13 @@ void remove_candidate(Candidate** head, Candidate* candidate) {
     free(candidate);
 }
 
+int size_candidate(Candidate** head) {
+    if (*head == NULL) 
+        return 0;
+
+    return size_candidate(*(*head)->next) + 1;
+}
+
 void print_candidates(Candidate* head) {
     Candidate* temp = head;
     while (temp != NULL) {

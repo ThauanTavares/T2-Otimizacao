@@ -20,7 +20,6 @@ bool covers_all_groups(Candidate* selected, int total_groups, bool *covered) {
     Candidate* temp = selected;
 
     while (temp != NULL) {
-        printf("aaaaadddaaa\n");
         for (int i = 0; i < temp->group_set.group_count; i++) {
             covered[temp->group_set.groups[i]] = true;
         }
@@ -37,22 +36,23 @@ void branch_and_bound_recursive(Candidate* remaining, Candidate* selected, int t
     bool *covered = (bool *)calloc(total_groups, sizeof(bool));
     bool is_covered = covers_all_groups(selected, total_groups, covered);
     
-    if (remaining == NULL) {
-        if (is_covered && (*best_solution == NULL || *best_solution_size > 1)) {
-            *best_solution_size = 1;
+    if (is_covered) {
+        int selected_size = size_candidate(selected);
+        if (selected_size <= best_solution){
+            *best_solution_size = selected_size;
             *best_solution = selected;
         }
         return;
     }
+
+    if (remaining == NULL)
+        return;
     
     if (selected != NULL && !is_covered) {
         return;
     }
-        
-    int bound = *best_solution_size;
-    if (bound > *best_solution_size) {
-        return;
-    }
+
+
 
     Candidate* best_candidate = NULL;
     int max_incremental_coverage = -1;
@@ -69,16 +69,20 @@ void branch_and_bound_recursive(Candidate* remaining, Candidate* selected, int t
         temp = temp->next;
     }
 
-    printf("aaaaabcbaaa\n");
+
+    printf("tamanho da melhor solucao: %d\nmelhor solucao:\n", *best_solution_size);
+    print_candidates(*best_solution);
+    printf("\nmelhor canditado: %d\n", best_candidate->id);
 
     if (best_candidate != NULL) {
-        printf("aaaaabcddbaaa\n");
-        add_candidate(&remaining, best_candidate->id, best_candidate->group_set.groups, best_candidate->group_set.group_count);
-        remove_candidate(&selected, best_candidate);
+        add_candidate(&selected, best_candidate->id, best_candidate->group_set.groups, best_candidate->group_set.group_count);
+        remove_candidate(&remaining, best_candidate);
 
         if (covers_all_groups(selected, total_groups, covered) && (*best_solution == NULL || *best_solution_size > 1 + best_candidate->id)) {
             *best_solution_size = best_candidate->id + 1;
             *best_solution = selected;
+            printf("aaaaabcdddeebaaa\n");
+
         }
 
         branch_and_bound_recursive(remaining, selected, total_groups, best_solution_size, best_solution);
