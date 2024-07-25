@@ -9,10 +9,13 @@ TESTE = teste.txt
 all: $(TARGET)
 
 $(TARGET): main.o
-	$(CC) $(CFLAGS) -o $(TARGET) main.o
+	$(CC) $(CFLAGS) -o $(TARGET) main.o lib.o
 
-main.o: main.c
-	$(CC) $(CFLAGS) -c main.c
+main.o: main.c lib.o
+	$(CC) $(CFLAGS) -c main.c 
+
+lib.o: lib.h
+	$(CC) $(CFLAGS) -c lib.c
 
 clean:
 	rm -f *.o $(TARGET) *.txt
