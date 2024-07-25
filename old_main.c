@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "lib.h"
 
 void instrUso(char *program_name) {
     printf("Uso: %s [-a] [-f] [-o]\n", program_name);
@@ -22,20 +23,22 @@ void imprimirDados(int l, int n, int *numGrupos, int **candidatos) {
     }
 }
 
-int Bdada(int l, int *E, int E_size, int **candidatos, int *numGrupos) {
-    // Contar os grupos cobertos pelos candidatos em E
+int Bdada(int l, Candidate* head) {
     int *gruposCobertos = (int *)calloc(l + 1, sizeof(int));
     int gruposCobrindo = 0;
+    int E_size = 0;
 
-    for (int i = 0; i < E_size; i++) {
-        int candidato = E[i];
-        for (int j = 0; j < numGrupos[candidato]; j++) {
-            int grupo = candidatos[candidato][j];
+    Candidate* current = head;
+    while (current != NULL) {
+        E_size++;
+        for (int j = 0; j < current->group_set.group_count; j++) {
+            int grupo = current->group_set.groups[j];
             if (!gruposCobertos[grupo]) {
                 gruposCobertos[grupo] = 1;
                 gruposCobrindo++;
             }
         }
+        current = current->next;
     }
 
     free(gruposCobertos);
@@ -48,28 +51,37 @@ int Bdada(int l, int *E, int E_size, int **candidatos, int *numGrupos) {
 }
 
 
-void branchAndBound(int l, int n, int **candidatos, int *numGrupos, int *E, int E_size, int *melhorE, int *melhorESize, int *F, int F_size, int (*boundFunction)(int, int *, int, int **, int *)) {
-    if (boundFunction(l, E, E_size, candidatos, numGrupos) >= *melhorESize) {
+
+void branchAndBound(int l, Candidate* head, Candidate* tail, Candidate* currentE, int E_size, Candidate** melhorE, int* melhorESize, int (*boundFunction)(int, Candidate*)) {
+    if (boundFunction(l, currentE) >= *melhorESize) {
         return;
     }
 
     int *gruposCobertos = (int *)calloc(l + 1, sizeof(int));
     int gruposCobrindo = 0;
-    for (int i = 0; i < E_size; i++) {
-        int candidato = E[i];
-        for (int j = 0; j < numGrupos[candidato]; j++) {
-            int grupo = candidatos[candidato][j];
+
+    Candidate* temp = currentE;
+    while (temp != NULL) {
+        for (int j = 0; j < temp->group_set.group_count; j++) {
+            int grupo = temp->group_set.groups[j];
             if (!gruposCobertos[grupo]) {
                 gruposCobertos[grupo] = 1;
                 gruposCobrindo++;
             }
         }
+        temp = temp->next;
     }
 
     if (gruposCobrindo == l) {
         if (E_size < *melhorESize) {
             *melhorESize = E_size;
-            memcpy(melhorE, E, E_size * sizeof(int));
+            // Atualize melhorE para o conjunto atual de candidatos
+            Candidate* iter = currentE;
+            *melhorE = NULL;
+            while (iter != NULL) {
+                add_candidate(melhorE, iter->id, iter->group_set.groups, iter->group_set.group_count);
+                iter = iter->next;
+            }
         }
         free(gruposCobertos);
         return;
@@ -77,135 +89,139 @@ void branchAndBound(int l, int n, int **candidatos, int *numGrupos, int *E, int 
 
     free(gruposCobertos);
 
-    if (F_size == 0) {
+    if (tail == NULL) {
         return;
     }
 
-    int novoCandidato = F[F_size - 1];
-    int *novoE = (int *)malloc((E_size + 1) * sizeof(int));
-    memcpy(novoE, E, E_size * sizeof(int));
-    novoE[E_size] = novoCandidato;
+    Candidate* novoE = create_candidate(tail->id, tail->group_set.groups, tail->group_set.group_count);
+    novoE->next = currentE;
+    if (currentE != NULL) {
+        currentE->prev = novoE;
+    }
 
-    int *novoF = (int *)malloc(F_size * sizeof(int));
-    memcpy(novoF, F, F_size * sizeof(int));
-    novoF[F_size - 1] = novoF[0];
-    novoF[0] = novoF[F_size - 1];
+    Candidate* novoTail = tail->prev;
+    if (novoTail != NULL) {
+        novoTail->next = NULL;
+    }
 
-    branchAndBound(l, n, candidatos, numGrupos, novoE, E_size + 1, melhorE, melhorESize, novoF, F_size - 1, boundFunction);
-    branchAndBound(l, n, candidatos, numGrupos, E, E_size, melhorE, melhorESize, F, F_size - 1, boundFunction);
+    branchAndBound(l, head, novoTail, novoE, E_size + 1, melhorE, melhorESize, boundFunction);
+    branchAndBound(l, head, novoTail, currentE, E_size, melhorE, melhorESize, boundFunction);
 
+    free(novoE->group_set.groups);
     free(novoE);
-    free(novoF);
 }
 
 
 
-int main(int argc, char *argv[]) {
-    int funcaoLimitantePadrao = 1; // Usar a função limitante default por padrão
-    int cortesViabilidade = 1;  // Cortes por viabilidade ativos por padrão
-    int cortesOtimalidade = 1;   // Cortes por otimalidade ativos por padrão
 
-    // Processa os argumentos da linha de comando
+int main(int argc, char *argv[]) {
+    int funcaoLimitantePadrao = 1;
+    int cortesViabilidade = 1;
+    int cortesOtimalidade = 1;
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-a") == 0) {
-            funcaoLimitantePadrao = 0; // Usa a função limitante fornecida pelo professor
+            funcaoLimitantePadrao = 0;
         } else if (strcmp(argv[i], "-f") == 0) {
-            cortesViabilidade = 0;  // Desativa os cortes por viabilidade
+            cortesViabilidade = 0;
         } else if (strcmp(argv[i], "-o") == 0) {
-            cortesOtimalidade = 0;   // Desativa os cortes por otimalidade
+            cortesOtimalidade = 0;
         } else {
-            instrUso(argv[0]);
+            printf("Uso: %s [-a] [-f] [-o]\n", argv[0]);
+            printf("    -a    Usa a função limitante fornecida pelo professor\n");
+            printf("    -f    Desativa os cortes por viabilidade\n");
+            printf("    -o    Desativa os cortes por otimalidade\n");
+            printf("    (Sem opções) Usa a função limitante default com todos os cortes ativos\n");
             return 1;
         }
     }
 
-    // Leitura dos valores de l e n
     int l, n;
     if (scanf("%d %d", &l, &n) != 2) {
         fprintf(stderr, "Erro na leitura dos valores de ` e `n`\n");
         return 1;
     }
 
-    // Alocação dinâmica para armazenar os candidatos e os grupos que eles representam
-    int **candidatos = (int **)malloc(n * sizeof(int *));
-    int *numGrupos = (int *)malloc(n * sizeof(int));
-
+    Candidate* head = NULL;
     for (int i = 0; i < n; i++) {
         int s;
         if (scanf("%d", &s) != 1) {
             fprintf(stderr, "Erro na leitura do número de grupos do candidato %d\n", i + 1);
             return 1;
         }
-        numGrupos[i] = s;
-        candidatos[i] = (int *)malloc(s * sizeof(int));
+        int* groups = (int*)malloc(s * sizeof(int));
         for (int j = 0; j < s; j++) {
-            if (scanf("%d", &candidatos[i][j]) != 1) {
+            if (scanf("%d", &groups[j]) != 1) {
                 fprintf(stderr, "Erro na leitura dos grupos do candidato %d\n", i + 1);
                 return 1;
             }
         }
+        add_candidate(&head, i+1, groups, s);
+        free(groups);
     }
 
-    int *E = (int *)malloc(n * sizeof(int));
-    int E_size = 0;
-    int *melhorE = (int *)malloc(n * sizeof(int));
+    print_candidates(head);
+
+    Candidate* melhorE = NULL;
     int melhorESize = n + 1;
 
-    int *F = (int *)malloc(n * sizeof(int));
-    for (int i = 0; i < n; i++) {
-        F[i] = i;
-    }
+    int (*boundFunction)(int, Candidate*) = Bdada;
 
-    int (*boundFunction)(int, int *, int, int **, int *) = Bdada;
-
-    // Exemplo de como a escolha das opções pode ser usada na implementação
     if (funcaoLimitantePadrao) {
         printf("Usando a função limitante default.\n");
-        // Chame a função limitante default aqui
+        // Aqui você pode definir outra função limitante, se necessário
     } else {
         printf("Usando a função limitante fornecida pelo professor.\n");
-        // Chame a função limitante fornecida pelo professor aqui
     }
 
     if (cortesViabilidade) {
         printf("Cortes por viabilidade estão ativos.\n");
-        // Implementação dos cortes por viabilidade
     } else {
         printf("Cortes por viabilidade estão desativados.\n");
-        // Implementação sem cortes por viabilidade
     }
 
     if (cortesOtimalidade) {
         printf("Cortes por otimalidade estão ativos.\n");
-        // Implementação dos cortes por otimalidade
     } else {
         printf("Cortes por otimalidade estão desativados.\n");
-        // Implementação sem cortes por otimalidade
     }
 
+    Candidate* tail = head;
+    while (tail->next != NULL) {
+        tail = tail->next;
+    }
 
-    branchAndBound(l, n, candidatos, numGrupos, E, E_size, melhorE, &melhorESize, F, n, boundFunction);
+    branchAndBound(l, head, tail, NULL, 0, &melhorE, &melhorESize, boundFunction);
 
     if (melhorESize <= n) {
         printf("Número mínimo de candidatos: %d\n", melhorESize);
         printf("Candidatos escolhidos: ");
-        for (int i = 0; i < melhorESize; i++) {
-            printf("%d ", melhorE[i] + 1);
+        Candidate* temp = melhorE;
+        while (temp != NULL) {
+            printf("%d ", temp->id);
+            temp = temp->next;
         }
         printf("\n");
     } else {
         printf("Não foi possível encontrar uma solução.\n");
     }
 
-    for (int i = 0; i < n; i++) {
-        free(candidatos[i]);
+    // Libera a memória alocada
+    Candidate* temp = head;
+    while (temp != NULL) {
+        Candidate* next = temp->next;
+        free(temp->group_set.groups);
+        free(temp);
+        temp = next;
     }
-    free(candidatos);
-    free(numGrupos);
-    free(E);
-    free(melhorE);
-    free(F);
 
+    temp = melhorE;
+    while (temp != NULL) {
+        Candidate* next = temp->next;
+        free(temp->group_set.groups);
+        free(temp);
+        temp = next;
+    }
 
     return 0;
 }

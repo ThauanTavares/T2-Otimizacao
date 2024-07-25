@@ -8,11 +8,11 @@ TESTE = teste.txt
 
 all: $(TARGET)
 
-$(TARGET): main.o
-	$(CC) $(CFLAGS) -o $(TARGET) main.o lib.o
+$(TARGET): old_main.o
+	$(CC) $(CFLAGS) -o $(TARGET) old_main.o lib.o
 
-main.o: main.c lib.o
-	$(CC) $(CFLAGS) -c main.c 
+old_main.o: old_main.c lib.o
+	$(CC) $(CFLAGS) -c old_main.c 
 
 lib.o: lib.h
 	$(CC) $(CFLAGS) -c lib.c

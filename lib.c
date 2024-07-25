@@ -18,12 +18,14 @@ void add_candidate(Candidate** head, int id, int* groups, int group_count) {
     if (*head == NULL) {
         *head = new_candidate;
     } else {
-        new_candidate->next = *head;
-        (*head)->prev = new_candidate;
-        *head = new_candidate;
+        Candidate* temp = *head;
+        while (temp->next != NULL) {
+            temp = temp->next;
+        }
+        temp->next = new_candidate;
+        new_candidate->prev = temp;
     }
 }
-
 void remove_candidate(Candidate** head, Candidate* candidate) {
     if (*head == NULL || candidate == NULL) return;
 
