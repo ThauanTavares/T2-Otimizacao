@@ -1,8 +1,8 @@
 import random
 
 def gerar_linhas():
-    l = random.randint(1, 50)
-    n = random.randint(1, 50)
+    l = random.randint(1, 15)
+    n = random.randint(1, 15)
 
     linhas = []
     for _ in range(n):

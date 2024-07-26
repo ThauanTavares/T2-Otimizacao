@@ -13,7 +13,7 @@ Candidate* create_candidate(int id, int* groups, int group_count) {
     return new_candidate;
 }
 
-void add_candidate(Candidate** head, int id, int* groups, int group_count) {
+Candidate* add_candidate(Candidate** head, int id, int* groups, int group_count) {
     Candidate* new_candidate = create_candidate(id, groups, group_count);
     if (*head == NULL) {
         *head = new_candidate;
@@ -25,9 +25,11 @@ void add_candidate(Candidate** head, int id, int* groups, int group_count) {
         temp->next = new_candidate;
         new_candidate->prev = temp;
     }
+    return new_candidate;
 }
-void remove_candidate(Candidate** head, Candidate* candidate) {
-    if (*head == NULL || candidate == NULL) return;
+
+Candidate** remove_candidate(Candidate** head, Candidate* candidate) {
+    if (*head == NULL || candidate == NULL) return NULL;
 
     if (*head == candidate) {
         *head = candidate->next;
@@ -41,14 +43,14 @@ void remove_candidate(Candidate** head, Candidate* candidate) {
         candidate->prev->next = candidate->next;
     }
 
-    free(candidate);
+    return head;
 }
 
 int size_candidate(Candidate** head) {
     if (*head == NULL) 
         return 0;
 
-    return size_candidate(*(*head)->next) + 1;
+    return size_candidate(&((*head)->next)) + 1;
 }
 
 void print_candidates(Candidate* head) {

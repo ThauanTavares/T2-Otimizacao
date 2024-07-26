@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "lib.h"
+#include <stdbool.h>
+
+#define MAX_GROUPS 100
 
 void instrUso(char *program_name) {
     printf("Uso: %s [-a] [-f] [-o]\n", program_name);
@@ -23,12 +26,28 @@ void imprimirDados(int l, int n, int *numGrupos, int **candidatos) {
     }
 }
 
-int Bdada(int l, Candidate* head) {
+bool covers_all_groups(Candidate* selected, int total_groups, bool *covered) {
+    Candidate* temp = selected;
+
+    while (temp != NULL) {
+        for (int i = 0; i < temp->group_set.group_count; i++) {
+            covered[temp->group_set.groups[i] - 1] = true;
+        }
+        temp = temp->next;
+    }
+
+    for (int i = 0; i < total_groups; i++) {
+        if (!covered[i]) return false;
+    }
+    return true;
+}
+
+int bdada(int l, Candidate* e, Candidate* f) {
     int *gruposCobertos = (int *)calloc(l + 1, sizeof(int));
     int gruposCobrindo = 0;
     int E_size = 0;
 
-    Candidate* current = head;
+    Candidate* current = e;
     while (current != NULL) {
         E_size++;
         for (int j = 0; j < current->group_set.group_count; j++) {
@@ -50,82 +69,127 @@ int Bdada(int l, Candidate* head) {
     }
 }
 
+int bdefault(int l, Candidate* e, Candidate* f) {
+    bool covered[MAX_GROUPS] = {false};
+    int uncovered_groups = 0;
 
+    // Verifica quais grupos já estão cobertos pelos candidatos em E
+    if (covers_all_groups(e, l, covered))
+        return 0;
 
-void branchAndBound(int l, Candidate* head, Candidate* tail, Candidate* currentE, int E_size, Candidate** melhorE, int* melhorESize, int (*boundFunction)(int, Candidate*)) {
-    if (boundFunction(l, currentE) >= *melhorESize) {
-        return;
+    // Conta o número de grupos não cobertos
+    for (int i = 0; i < l; i++) {
+        if (!covered[i]) {
+            uncovered_groups++;
+        }
     }
 
-    int *gruposCobertos = (int *)calloc(l + 1, sizeof(int));
-    int gruposCobrindo = 0;
-
-    Candidate* temp = currentE;
+    // Calcula a máxima cobertura possível entre os candidatos restantes
+    int max_cover = 0;
+    Candidate* temp = f;
     while (temp != NULL) {
-        for (int j = 0; j < temp->group_set.group_count; j++) {
-            int grupo = temp->group_set.groups[j];
-            if (!gruposCobertos[grupo]) {
-                gruposCobertos[grupo] = 1;
-                gruposCobrindo++;
-            }
+        if (temp->group_set.group_count > max_cover) {
+            max_cover = temp->group_set.group_count;
         }
         temp = temp->next;
     }
 
-    if (gruposCobrindo == l) {
-        if (E_size < *melhorESize) {
-            *melhorESize = E_size;
-            // Atualize melhorE para o conjunto atual de candidatos
-            Candidate* iter = currentE;
+    // Calcula o limite inferior de candidatos adicionais necessários
+    int additional_candidates = (uncovered_groups + max_cover - 1) / max_cover; // Ceiling division
+
+    return size_candidate(&e) + additional_candidates;
+}
+
+
+bool feasible(int l, Candidate* e, Candidate* f){
+    bool covered[MAX_GROUPS];
+    for (int i = 0; i < l; i++) {
+        covered[i] = false;
+    }
+    
+    covers_all_groups(e, l, covered);
+    return covers_all_groups(f, l, covered);
+}
+
+bool optimal(int e_size, int melhorE){
+    if(e_size >= melhorE)
+        return false;
+    return true;
+}
+
+void branchAndBound(int l, Candidate* currentE, Candidate* currentF, int e_size, Candidate** melhorE, int* melhorESize, int (*boundFunction)(int, Candidate*, Candidate*), bool is_feasible, bool is_optimal) { 
+    if (is_feasible && !feasible(l, currentE, currentF)){
+        return;
+    }
+
+    if (is_optimal && !optimal(e_size, *melhorESize)){
+        return;
+    }
+    
+    if (boundFunction(l, currentE, currentF) >= *melhorESize)
+        return;
+    
+    bool covered[MAX_GROUPS];
+    for (int i = 0; i < l; i++)
+        covered[i] = false;
+
+    if (covers_all_groups(currentE, l, covered)) {
+        if (e_size < *melhorESize) {
+            *melhorESize = e_size;
+
+            // Libera a lista atual de melhorE
+            Candidate* temp = *melhorE;
+            while (temp != NULL) {
+                Candidate* next = temp->next;
+                remove_candidate(&temp, temp);
+                temp = next;
+            }
+
+            // Atualiza melhorE para o conjunto atual de candidatos
             *melhorE = NULL;
+            Candidate* iter = currentE;
             while (iter != NULL) {
                 add_candidate(melhorE, iter->id, iter->group_set.groups, iter->group_set.group_count);
                 iter = iter->next;
             }
         }
-        free(gruposCobertos);
         return;
     }
 
-    free(gruposCobertos);
-
-    if (tail == NULL) {
+    if (currentF == NULL)
         return;
-    }
 
-    Candidate* novoE = create_candidate(tail->id, tail->group_set.groups, tail->group_set.group_count);
-    novoE->next = currentE;
-    if (currentE != NULL) {
-        currentE->prev = novoE;
-    }
+    
+    // Adiciona o candidato atual ao conjunto E
+    Candidate * aux = add_candidate(&currentE, currentF->id, currentF->group_set.groups, currentF->group_set.group_count);
 
-    Candidate* novoTail = tail->prev;
-    if (novoTail != NULL) {
-        novoTail->next = NULL;
-    }
+    // Remove o candidato da lista F
+    currentF = *remove_candidate(&currentF, currentF);
 
-    branchAndBound(l, head, novoTail, novoE, E_size + 1, melhorE, melhorESize, boundFunction);
-    branchAndBound(l, head, novoTail, currentE, E_size, melhorE, melhorESize, boundFunction);
+    // Explora o ramo incluindo o candidato atual
+    branchAndBound(l, currentE, currentF, e_size + 1, melhorE, melhorESize, boundFunction, is_feasible, is_optimal);
 
-    free(novoE->group_set.groups);
-    free(novoE);
+    // Remove o candidato da lista F
+    currentE = *remove_candidate(&currentE, aux);
+
+    // Explora o ramo excluindo o candidato atual
+    branchAndBound(l, currentE, currentF, e_size, melhorE, melhorESize, boundFunction, is_feasible, is_optimal);
+
+    free(aux);
 }
 
-
-
-
 int main(int argc, char *argv[]) {
-    int funcaoLimitantePadrao = 1;
-    int cortesViabilidade = 1;
-    int cortesOtimalidade = 1;
+    bool funcaoLimitantePadrao = true;
+    bool cortesViabilidade = true;
+    bool cortesOtimalidade = true;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-a") == 0) {
-            funcaoLimitantePadrao = 0;
+            funcaoLimitantePadrao = false;
         } else if (strcmp(argv[i], "-f") == 0) {
-            cortesViabilidade = 0;
+            cortesViabilidade = false;
         } else if (strcmp(argv[i], "-o") == 0) {
-            cortesOtimalidade = 0;
+            cortesOtimalidade = false;
         } else {
             printf("Uso: %s [-a] [-f] [-o]\n", argv[0]);
             printf("    -a    Usa a função limitante fornecida pelo professor\n");
@@ -159,19 +223,19 @@ int main(int argc, char *argv[]) {
         add_candidate(&head, i+1, groups, s);
         free(groups);
     }
-
+    printf("l: %d n: %d\n", l, n);
     print_candidates(head);
 
     Candidate* melhorE = NULL;
     int melhorESize = n + 1;
 
-    int (*boundFunction)(int, Candidate*) = Bdada;
+    int (*boundFunction)(int, Candidate*, Candidate*) = bdefault;
 
     if (funcaoLimitantePadrao) {
         printf("Usando a função limitante default.\n");
-        // Aqui você pode definir outra função limitante, se necessário
     } else {
         printf("Usando a função limitante fornecida pelo professor.\n");
+        boundFunction = bdada;
     }
 
     if (cortesViabilidade) {
@@ -186,12 +250,14 @@ int main(int argc, char *argv[]) {
         printf("Cortes por otimalidade estão desativados.\n");
     }
 
-    Candidate* tail = head;
-    while (tail->next != NULL) {
-        tail = tail->next;
+    Candidate* f = NULL;
+    Candidate* a = head;
+    while (a != NULL) {
+        add_candidate(&f, a->id, a->group_set.groups, a->group_set.group_count);
+        a = a->next;
     }
 
-    branchAndBound(l, head, tail, NULL, 0, &melhorE, &melhorESize, boundFunction);
+    branchAndBound(l, NULL, f, 0, &melhorE, &melhorESize, boundFunction, cortesViabilidade, cortesOtimalidade);
 
     if (melhorESize <= n) {
         printf("Número mínimo de candidatos: %d\n", melhorESize);
